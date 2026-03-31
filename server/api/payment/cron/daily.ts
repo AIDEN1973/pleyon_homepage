@@ -1,0 +1,288 @@
+// Vercel Cron Job: 매일 00:00 UTC (한국 09:00) 실행
+// 1. 체험 만료 → 첫 구독기간 레코드 생성 (무통장: past_due, 카드: 자동결제)
+// 2. 구독 갱신 → 다음 구독기간 결제
+// 3. 미납 재시도 (3일·7일·14일 차) → 15일 초과 시 자동 해지
+export default defineEventHandler(async (event) => {
+  const cronSecret = process.env.CRON_SECRET
+  const authHeader = getHeader(event, 'authorization')
+
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    throw createError({ statusCode: 401, message: '인증되지 않은 Cron 요청입니다.' })
+  }
+
+  const supabase = useSupabaseServer()
+  const portone = usePortoneServer()
+  const now = new Date()
+  const todayStr = now.toISOString().split('T')[0]
+
+  const tierMonthly: Record<string, number> = { basic: 33000, standard: 55000, pro: 99000 }
+  const ANNUAL_DISCOUNT = 0.10
+  const results: Array<{ storeId: string; task: string; status: string; detail?: string }> = []
+
+  // 결제 주기에 따른 금액 계산
+  const calcAmount = (tier: string, cycle: string): number => {
+    const monthly = tierMonthly[tier] || 33000
+    if (cycle === 'annual') return Math.round(monthly * 12 * (1 - ANNUAL_DISCOUNT) / 100) * 100
+    return monthly
+  }
+
+  // 결제 주기에 따른 기간 계산
+  const addPeriod = (dateStr: string, cycle: string): string => {
+    const d = new Date(dateStr)
+    if (cycle === 'annual') d.setFullYear(d.getFullYear() + 1)
+    else d.setMonth(d.getMonth() + 1)
+    d.setDate(d.getDate() - 1)
+    return d.toISOString().split('T')[0]
+  }
+
+  const nextDueDate = (dateStr: string, cycle: string): string => {
+    const d = new Date(dateStr)
+    if (cycle === 'annual') d.setFullYear(d.getFullYear() + 1)
+    else d.setMonth(d.getMonth() + 1)
+    return d.toISOString().split('T')[0]
+  }
+
+  // ─── 1. 체험 만료 처리 ────────────────────────────────
+  const { data: trialStores } = await supabase
+    .from('stores')
+    .select('id, name, tier, billing_cycle, billing_key')
+    .eq('subscription_status', 'trialing')
+    .eq('is_franchise', false)
+    .lte('trial_ends_at', todayStr)
+
+  for (const store of trialStores || []) {
+    const cycle = store.billing_cycle || 'monthly'
+    const amount = calcAmount(store.tier, cycle)
+    const periodStart = todayStr
+    const periodEnd = addPeriod(todayStr, cycle)
+    const dueDateNext = nextDueDate(todayStr, cycle)
+
+    // 빌링키 없는 매장 (무통장입금) → 자동결제 없이 past_due 전환
+    if (!store.billing_key) {
+      await supabase.from('stores').update({
+        subscription_status: 'past_due',
+        subscription_due_date: dueDateNext,
+        trial_ends_at: null,
+      }).eq('id', store.id)
+
+      await supabase.from('saas_subscription_payments').upsert({
+        store_id: store.id,
+        tier: store.tier,
+        amount,
+        period_start: periodStart,
+        period_end: periodEnd,
+        payment_status: 'unpaid',
+        payment_method: 'BANK_TRANSFER',
+      }, { onConflict: 'store_id,period_start', ignoreDuplicates: true })
+
+      results.push({ storeId: store.id, task: 'trial_end', status: 'past_due', detail: '무통장입금 대기' })
+      continue
+    }
+
+    // 빌링키 있는 매장 → 포트원 자동결제
+    const paymentId = generatePaymentId(store.id)
+
+    try {
+      const payment = await portone.payWithBillingKey({
+        paymentId,
+        billingKey: store.billing_key,
+        orderName: `플레이온 ${store.tier} 플랜 (${cycle === 'annual' ? '연간' : '월간'} 체험 종료)`,
+        amount,
+      })
+
+      if (payment.status === 'PAID') {
+        await supabase.from('stores').update({
+          subscription_status: 'active',
+          subscription_due_date: dueDateNext,
+          trial_ends_at: null,
+        }).eq('id', store.id)
+
+        await supabase.from('saas_subscription_payments').upsert({
+          store_id: store.id,
+          tier: store.tier,
+          amount,
+          period_start: periodStart,
+          period_end: periodEnd,
+          payment_status: 'paid',
+          payment_date: todayStr,
+          payment_method: 'BILLING_KEY',
+          portone_payment_id: paymentId,
+        }, { onConflict: 'store_id,period_start', ignoreDuplicates: true })
+
+        results.push({ storeId: store.id, task: 'trial_end', status: 'success' })
+      } else {
+        await supabase.from('stores').update({
+          subscription_status: 'past_due',
+          subscription_due_date: dueDateNext,
+          trial_ends_at: null,
+        }).eq('id', store.id)
+        results.push({ storeId: store.id, task: 'trial_end', status: 'failed', detail: payment.status })
+      }
+    } catch (err) {
+      console.error(`[체험 만료 결제 실패] store=${store.id}:`, err)
+      await supabase.from('stores').update({
+        subscription_status: 'past_due',
+        subscription_due_date: dueDateNext,
+        trial_ends_at: null,
+      }).eq('id', store.id)
+      results.push({ storeId: store.id, task: 'trial_end', status: 'error' })
+    }
+  }
+
+  // ─── 2. 구독 갱신 ────────────────────────────────────
+  const { data: renewStores } = await supabase
+    .from('stores')
+    .select('id, name, tier, billing_cycle, billing_key, subscription_due_date')
+    .eq('subscription_status', 'active')
+    .eq('is_franchise', false)
+    .lte('subscription_due_date', todayStr)
+
+  for (const store of renewStores || []) {
+    const cycle = store.billing_cycle || 'monthly'
+    const amount = calcAmount(store.tier, cycle)
+    const periodStart = todayStr
+    const periodEnd = addPeriod(todayStr, cycle)
+    const dueDateNext = nextDueDate(todayStr, cycle)
+
+    // 빌링키 없는 매장 (무통장입금) → past_due 전환
+    if (!store.billing_key) {
+      await supabase.from('stores').update({
+        subscription_status: 'past_due',
+        subscription_due_date: periodEnd,  // 구독 종료일 기준 (가드에서 연체일 계산용)
+      }).eq('id', store.id)
+
+      await supabase.from('saas_subscription_payments').upsert({
+        store_id: store.id,
+        tier: store.tier,
+        amount,
+        period_start: periodStart,
+        period_end: periodEnd,
+        payment_status: 'unpaid',
+        payment_method: 'BANK_TRANSFER',
+      }, { onConflict: 'store_id,period_start', ignoreDuplicates: true })
+
+      results.push({ storeId: store.id, task: 'renew', status: 'past_due', detail: '무통장입금 대기' })
+      continue
+    }
+
+    // 빌링키 있는 매장 → 포트원 자동결제
+    const paymentId = generatePaymentId(store.id)
+
+    try {
+      const payment = await portone.payWithBillingKey({
+        paymentId,
+        billingKey: store.billing_key,
+        orderName: `플레이온 ${store.tier} 플랜 ${cycle === 'annual' ? '연간' : '월간'} 정기결제`,
+        amount,
+      })
+
+      if (payment.status === 'PAID') {
+        await supabase.from('stores').update({
+          subscription_status: 'active',
+          subscription_due_date: dueDateNext,
+        }).eq('id', store.id)
+
+        await supabase.from('saas_subscription_payments').upsert({
+          store_id: store.id,
+          tier: store.tier,
+          amount,
+          period_start: periodStart,
+          period_end: periodEnd,
+          payment_status: 'paid',
+          payment_date: todayStr,
+          payment_method: 'BILLING_KEY',
+          portone_payment_id: paymentId,
+        }, { onConflict: 'store_id,period_start', ignoreDuplicates: true })
+
+        results.push({ storeId: store.id, task: 'renew', status: 'success' })
+      } else {
+        await supabase.from('stores').update({ subscription_status: 'past_due' }).eq('id', store.id)
+        results.push({ storeId: store.id, task: 'renew', status: 'failed', detail: payment.status })
+      }
+    } catch (err) {
+      console.error(`[구독 갱신 실패] store=${store.id}:`, err)
+      await supabase.from('stores').update({ subscription_status: 'past_due' }).eq('id', store.id)
+      results.push({ storeId: store.id, task: 'renew', status: 'error' })
+    }
+  }
+
+  // ─── 3. 미납 재시도 (Dunning) ─────────────────────────
+  const { data: pastDueStores } = await supabase
+    .from('stores')
+    .select('id, name, tier, billing_cycle, billing_key, subscription_due_date')
+    .eq('subscription_status', 'past_due')
+    .eq('is_franchise', false)
+
+  for (const store of pastDueStores || []) {
+    if (!store.subscription_due_date) continue
+
+    const dueDate = new Date(store.subscription_due_date)
+    const daysPastDue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
+
+    // 15일 초과: 자동 해지
+    if (daysPastDue >= 15) {
+      await supabase.from('stores').update({ subscription_status: 'cancelled' }).eq('id', store.id)
+      results.push({ storeId: store.id, task: 'dunning', status: 'cancelled', detail: `${daysPastDue}일 경과` })
+      continue
+    }
+
+    // 빌링키 없는 매장 (무통장입금) → 자동 재시도 없이 대기
+    if (!store.billing_key) continue
+
+    // 3일·7일·14일 차에만 재시도 (빌링키 있는 매장만)
+    if (![3, 7, 14].includes(daysPastDue)) continue
+
+    // 미납 레코드 찾기 (가장 최근 period_start)
+    const { data: unpaidRecord } = await supabase
+      .from('saas_subscription_payments')
+      .select('period_start, period_end')
+      .eq('store_id', store.id)
+      .eq('payment_status', 'unpaid')
+      .order('period_start', { ascending: false })
+      .limit(1)
+      .single()
+
+    const paymentId = generatePaymentId(store.id)
+    const cycle = store.billing_cycle || 'monthly'
+    const amount = calcAmount(store.tier, cycle)
+
+    try {
+      const payment = await portone.payWithBillingKey({
+        paymentId,
+        billingKey: store.billing_key,
+        orderName: `플레이온 ${store.tier} 플랜 미납 재결제`,
+        amount,
+      })
+
+      if (payment.status === 'PAID') {
+        await supabase.from('stores').update({
+          subscription_status: 'active',
+          subscription_due_date: nextDueDate(todayStr, cycle),
+        }).eq('id', store.id)
+
+        // 미납 레코드를 paid로 업데이트
+        if (unpaidRecord) {
+          await supabase.from('saas_subscription_payments')
+            .update({
+              payment_status: 'paid',
+              payment_date: todayStr,
+              payment_method: 'BILLING_KEY',
+              portone_payment_id: paymentId,
+            })
+            .eq('store_id', store.id)
+            .eq('period_start', unpaidRecord.period_start)
+        }
+
+        results.push({ storeId: store.id, task: 'dunning', status: 'recovered', detail: `${daysPastDue}일 차 재시도` })
+      } else {
+        results.push({ storeId: store.id, task: 'dunning', status: 'failed', detail: `${daysPastDue}일 차 재시도 실패` })
+      }
+    } catch (err) {
+      console.error(`[미납 재시도 실패] store=${store.id} day=${daysPastDue}:`, err)
+      results.push({ storeId: store.id, task: 'dunning', status: 'error', detail: `${daysPastDue}일 차` })
+    }
+  }
+
+  console.log(`[Daily Cron] 완료: ${results.length}건 처리`)
+  return { date: todayStr, processed: results.length, results }
+})
