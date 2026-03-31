@@ -9,7 +9,7 @@
   >
     <div class="w-full px-6 flex items-center justify-between h-full gap-8">
       <NuxtLink to="/" class="flex-shrink-0 z-[101]" aria-label="플레이온 홈">
-        <svg width="170" height="32" viewBox="0 0 170 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg class="w-[140px] h-[26px] md:w-[170px] md:h-[32px]" viewBox="0 0 170 32" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect width="32" height="32" rx="10" fill="#1A7CFD" />
           <path d="M10 10h12v4H14v8h-4V10z" fill="#fff" />
           <text x="40" y="23" font-size="22" font-weight="700" fill="hsl(222, 47%, 11%)" stroke="hsl(222, 47%, 11%)" stroke-width="0.8" font-family="Gmarket Sans, sans-serif" letter-spacing="0.5">PLEYON</text>

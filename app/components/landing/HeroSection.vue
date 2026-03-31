@@ -1,5 +1,5 @@
 <template>
-  <section :class="cn('relative -mt-[var(--header-height)] pt-[calc(var(--header-height)+7rem)] pb-28 md:pb-32 text-center overflow-hidden transition-colors duration-700', slides[currentSlide].bg)">
+  <section :class="cn('relative -mt-[var(--header-height)] pt-[calc(var(--header-height)+4rem)] pb-16 md:pt-[calc(var(--header-height)+7rem)] md:pb-32 text-center overflow-hidden transition-colors duration-700', slides[currentSlide].bg)">
     <!-- 도트 그리드 (헤더 아래부터) -->
     <div class="absolute inset-0 top-[var(--header-height)] pointer-events-none" style="background-image: radial-gradient(circle, rgba(255,255,255,0.12) 1.5px, transparent 1.5px); background-size: 28px 28px;" />
     <!-- 큰 원형 아웃라인 -->

@@ -23,7 +23,7 @@ export default defineNuxtConfig({
     public: {
       supabaseUrl: '',
       supabaseAnonKey: '',
-      siteUrl: 'https://sv.pleyon.co.kr',
+      siteUrl: 'https://home.pleyon.co.kr',
       appUrl: 'https://www.pleyon.co.kr',
       portoneStoreId: '',
       portoneChannelKey: '',
