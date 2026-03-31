@@ -250,7 +250,7 @@
         <!-- 하단 로그인 링크 -->
         <p class="text-center text-sm text-muted-foreground mt-8">
           이미 계정이 있으신가요?
-          <a href="https://www.pleyon.co.kr/login" class="text-primary font-medium hover:underline">로그인</a>
+          <a href="https://app.pleyon.co.kr/login" class="text-primary font-medium hover:underline">로그인</a>
         </p>
       </div>
     </div>
@@ -454,7 +454,7 @@ async function handleSignup() {
             .single()
 
           if (store?.subscription_status === 'active' || store?.subscription_status === 'trialing') {
-            throw new Error('이미 가입된 계정입니다. 플레이온(www.pleyon.co.kr)에서 로그인해주세요.')
+            throw new Error('이미 가입된 계정입니다. 플레이온(app.pleyon.co.kr)에서 로그인해주세요.')
           }
         }
 
