@@ -250,7 +250,7 @@
         <!-- 하단 로그인 링크 -->
         <p class="text-center text-sm text-muted-foreground mt-8">
           이미 계정이 있으신가요?
-          <a href="https://app.pleyon.co.kr" class="text-primary font-medium hover:underline">로그인</a>
+          <a href="https://pleyon.co.kr" class="text-primary font-medium hover:underline">로그인</a>
         </p>
       </div>
     </div>

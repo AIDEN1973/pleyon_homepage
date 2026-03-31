@@ -103,7 +103,7 @@ import { Button } from '~/components/ui/button'
 
 import { cn } from '~/lib/utils'
 
-const appUrl = useRuntimeConfig().public.appUrl || 'https://app.pleyon.co.kr'
+const appUrl = useRuntimeConfig().public.appUrl || 'https://pleyon.co.kr'
 
 function openChannelTalk() {
   if (typeof window !== 'undefined' && (window as any).ChannelIO) {

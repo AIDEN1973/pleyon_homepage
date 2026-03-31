@@ -153,7 +153,7 @@ import { Button } from '~/components/ui/button'
 import { Separator } from '~/components/ui/separator'
 
 const route = useRoute()
-const appUrl = useRuntimeConfig().public.appUrl || 'https://app.pleyon.co.kr'
+const appUrl = useRuntimeConfig().public.appUrl || 'https://pleyon.co.kr'
 const supabase = useSupabase()
 const isScrolled = ref(false)
 const isMobileOpen = ref(false)
