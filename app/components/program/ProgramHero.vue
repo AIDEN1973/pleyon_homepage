@@ -128,7 +128,7 @@
           <p>비밀번호 4자리 4417을 입력하시면 플레이온의 다양한 기능을 확인할 수 있어요.</p>
           <div class="text-5xl max-md:text-4xl font-black text-foreground tracking-[8px] my-8">4417</div>
           <a
-            href="https://pleyon.co.kr"
+            href="https://www.pleyon.co.kr"
             target="_blank"
             rel="noopener noreferrer"
             class="inline-block px-6 py-3 border border-border rounded-lg font-medium text-sm text-foreground transition-colors mt-4 hover:bg-muted"

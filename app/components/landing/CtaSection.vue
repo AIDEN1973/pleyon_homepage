@@ -27,7 +27,7 @@
 <script setup lang="ts">
 import { Button } from '~/components/ui/button'
 
-const appUrl = useRuntimeConfig().public.appUrl || 'https://pleyon.co.kr'
+const appUrl = useRuntimeConfig().public.appUrl || 'https://www.pleyon.co.kr'
 
 function openChannelTalk() {
   if (typeof window !== 'undefined' && (window as any).ChannelIO) {

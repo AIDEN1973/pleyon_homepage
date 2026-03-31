@@ -220,7 +220,7 @@ const route = useRoute()
 const status = ref((route.query.status as string) || '')
 const tier = ref((route.query.tier as string) || 'basic')
 const trialEndsAt = ref((route.query.trialEndsAt as string) || '')
-const appUrl = config.public.appUrl || 'https://pleyon.co.kr'
+const appUrl = config.public.appUrl || 'https://www.pleyon.co.kr'
 const errorMessage = ref('')
 const isProcessing = ref(false)
 
