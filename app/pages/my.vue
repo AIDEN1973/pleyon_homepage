@@ -620,10 +620,20 @@ function formatPhone(p: string) { if (!p) return ''; const d = p.replace(/[^0-9]
 function statusValueColor(s: string) { return s === 'active' || s === 'trialing' ? 'text-[#0F1B2D]' : 'text-destructive' }
 function paymentStatusLabel(s: string) { return ({ paid: '완료', unpaid: '미결제', refunded: '환불' } as Record<string, string>)[s] || s }
 
+// 세션 캐시 — 매번 getSession 호출 방지
+let cachedSession: any = null
+
+async function getSession() {
+  if (cachedSession) return cachedSession
+  const session = await getSession()
+  cachedSession = session
+  return session
+}
+
 async function loadData() {
   isLoading.value = true; loadError.value = ''
   try {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getSession()
     if (!session?.user) { user.value = null; return }
     user.value = session.user
     const res = await $fetch('/api/payment/subscription', { headers: { Authorization: `Bearer ${session.access_token}` } })
@@ -631,6 +641,11 @@ async function loadData() {
   } catch (err: any) { loadError.value = err?.data?.message || err?.message || '데이터를 불러오지 못했습니다.' }
   finally { isLoading.value = false }
 }
+
+// auth 상태 변경 시 캐시 갱신
+supabase.auth.onAuthStateChange((_event, session) => {
+  cachedSession = session
+})
 
 async function handleLogin() {
   if (isLoggingIn.value) return; isLoggingIn.value = true; loginError.value = ''
@@ -666,7 +681,7 @@ async function confirmCycleChange() {
   showCycleConfirm.value = false
   isCycleChanging.value = true
   try {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getSession()
     if (!session?.access_token) throw new Error('세션 만료')
     await $fetch('/api/payment/billing-cycle', {
       method: 'POST',
@@ -682,11 +697,11 @@ async function confirmCycleChange() {
   }
 }
 
-async function handleLogout() { await supabase.auth.signOut(); user.value = null; store.value = null; payments.value = [] }
+async function handleLogout() { await supabase.auth.signOut(); cachedSession = null; user.value = null; store.value = null; payments.value = [] }
 
 async function handleCancelSubscription() {
   if (!store.value || !confirm(store.value.subscription_status === 'trialing' ? '무료이용을 취소하시겠습니까?' : '구독을 해지하시겠습니까?')) return
-  try { const { data: { session } } = await supabase.auth.getSession(); await $fetch('/api/payment/billing', { method: 'POST', headers: { Authorization: `Bearer ${session!.access_token}` }, body: { action: 'delete', storeId: store.value.id } }); store.value.subscription_status = 'cancelled' }
+  try { const session = await getSession(); await $fetch('/api/payment/billing', { method: 'POST', headers: { Authorization: `Bearer ${session!.access_token}` }, body: { action: 'delete', storeId: store.value.id } }); store.value.subscription_status = 'cancelled' }
   catch (err: any) { alert(err.data?.message || err.message || '실패') }
 }
 
@@ -695,7 +710,7 @@ function closePlanChange() { const had = !!planChangeResult.value; showPlanChang
 async function handlePlanChange() {
   if (isChangingPlan.value || !selectedNewTier.value) return; isChangingPlan.value = true; planChangeError.value = ''
   try {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getSession()
     const res = await $fetch<{ success: boolean; message: string; diffAmount: number; immediate: boolean }>('/api/payment/plan-change', { method: 'POST', headers: { Authorization: `Bearer ${session!.access_token}` }, body: { storeId: store.value.id, toTier: selectedNewTier.value } })
     planChangeResult.value = res.message; planChangeDiffAmount.value = res.diffAmount > 0 ? res.diffAmount : 0; if (res.immediate) store.value.tier = selectedNewTier.value
   } catch (err: any) { planChangeError.value = err.data?.message || err.message || '실패' } finally { isChangingPlan.value = false }
@@ -712,7 +727,7 @@ async function handleChangePassword() {
 
 async function handleWithdraw() {
   if (isWithdrawing.value) return; isWithdrawing.value = true; withdrawError.value = ''
-  try { const { data: { session } } = await supabase.auth.getSession(); await $fetch('/api/payment/billing', { method: 'POST', headers: { Authorization: `Bearer ${session!.access_token}` }, body: { action: 'delete', storeId: store.value.id } }); await supabase.auth.signOut(); user.value = null; store.value = null; payments.value = []; showWithdraw.value = false }
+  try { const session = await getSession(); await $fetch('/api/payment/billing', { method: 'POST', headers: { Authorization: `Bearer ${session!.access_token}` }, body: { action: 'delete', storeId: store.value.id } }); await supabase.auth.signOut(); user.value = null; store.value = null; payments.value = []; showWithdraw.value = false }
   catch (err: any) { withdrawError.value = err.data?.message || err.message || '실패' } finally { isWithdrawing.value = false }
 }
 

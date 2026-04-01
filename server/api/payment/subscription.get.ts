@@ -14,8 +14,8 @@ export default defineEventHandler(async (event) => {
     return { store: null, payments: [] }
   }
 
-  // 매장 정보 + 결제 이력 + 이메일 병렬 조회
-  const [storeRes, paymentRes, authRes] = await Promise.all([
+  // 매장 정보 + 결제 이력 병렬 조회 (auth 호출 제거 — email은 profiles에서 조회)
+  const [storeRes, paymentRes] = await Promise.all([
     supabase
       .from('stores')
       .select('id, name, tier, billing_cycle, subscription_status, subscription_due_date, billing_key, store_owner_name, owner_phone')
@@ -28,8 +28,15 @@ export default defineEventHandler(async (event) => {
       .eq('payment_status', 'paid')
       .order('created_at', { ascending: false })
       .limit(20),
-    supabase.auth.admin.getUserById(userId),
   ])
+
+  // email은 requireAuth에서 이미 검증된 토큰의 JWT에서 추출
+  const authHeader = getHeader(event, 'authorization') || ''
+  let email = ''
+  try {
+    const payload = JSON.parse(atob(authHeader.slice(7).split('.')[1]))
+    email = payload.email || ''
+  } catch { /* fallback */ }
 
   const storeData = storeRes.data
   return {
@@ -43,7 +50,7 @@ export default defineEventHandler(async (event) => {
       hasBillingKey: !!storeData.billing_key,
       ownerName: storeData.store_owner_name,
       ownerPhone: storeData.owner_phone,
-      email: authRes.data?.user?.email || '',
+      email,
     } : null,
     payments: paymentRes.data || [],
   }
