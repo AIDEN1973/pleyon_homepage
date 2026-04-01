@@ -625,7 +625,7 @@ let cachedSession: any = null
 
 async function getSession() {
   if (cachedSession) return cachedSession
-  const session = await getSession()
+  const { data: { session } } = await supabase.auth.getSession()
   cachedSession = session
   return session
 }
