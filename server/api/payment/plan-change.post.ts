@@ -53,19 +53,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 409, message: '이미 대기 중인 플랜 변경 요청이 있습니다.' })
   }
 
-  const tierMonthly: Record<string, number> = { basic: 33000, standard: 55000, pro: 99000 }
-  const ANNUAL_DISCOUNT = 0.10
   const cycle = store.billing_cycle || 'monthly'
   const periodDays = cycle === 'annual' ? 365 : 30
 
-  const calcCycleAmount = (tier: string): number => {
-    const monthly = tierMonthly[tier] || 33000
-    if (cycle === 'annual') return Math.round(monthly * 12 * (1 - ANNUAL_DISCOUNT) / 100) * 100
-    return monthly
-  }
-
-  const fromAmount = calcCycleAmount(store.tier)
-  const toAmount = calcCycleAmount(toTier)
+  const fromAmount = calcAmount(store.tier, cycle)
+  const toAmount = calcAmount(toTier, cycle)
 
   // 차액 계산: 남은 일수 기준 일할 계산
   let diffAmount = 0

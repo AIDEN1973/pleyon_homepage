@@ -15,24 +15,7 @@ export default defineEventHandler(async (event) => {
   const now = new Date()
   const todayStr = now.toISOString().split('T')[0]
 
-  const tierMonthly: Record<string, number> = { basic: 33000, standard: 55000, pro: 99000 }
-  const ANNUAL_DISCOUNT = 0.10
   const results: Array<{ storeId: string; task: string; status: string; detail?: string }> = []
-
-  // 결제 주기에 따른 금액 계산
-  const calcAmount = (tier: string, cycle: string): number => {
-    const monthly = tierMonthly[tier] || 33000
-    if (cycle === 'annual') return Math.round(monthly * 12 * (1 - ANNUAL_DISCOUNT) / 100) * 100
-    return monthly
-  }
-
-  // 결제 주기에 따른 기간/결제일 계산 (동일 로직 통합)
-  const calcNextDate = (dateStr: string, cycle: string = 'monthly'): string => {
-    const d = new Date(dateStr)
-    if (cycle === 'annual') d.setFullYear(d.getFullYear() + 1)
-    else d.setMonth(d.getMonth() + 1)
-    return d.toISOString().split('T')[0]
-  }
 
   // ─── 1. 체험 만료 처리 ────────────────────────────────
   const { data: trialStores } = await supabase

@@ -35,14 +35,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: '매장을 찾을 수 없습니다.' })
   }
 
-  const tierMonthly: Record<string, number> = { basic: 33000, standard: 55000, pro: 99000 }
-  const ANNUAL_DISCOUNT = 0.10
-  const calcAmount = (tier: string, cycle: string): number => {
-    const monthly = tierMonthly[tier] || 33000
-    if (cycle === 'annual') return Math.round(monthly * 12 * (1 - ANNUAL_DISCOUNT) / 100) * 100
-    return monthly
-  }
-
   switch (action) {
     case 'update': {
       // 빌링키 변경 (카드 변경)
