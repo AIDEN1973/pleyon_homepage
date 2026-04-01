@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
   // 매장 정보 조회
   const { data: store, error: storeError } = await supabase
     .from('stores')
-    .select('id, name, tier, billing_key, subscription_status, subscription_due_date')
+    .select('id, name, tier, billing_cycle, billing_key, subscription_status, subscription_due_date')
     .eq('id', storeId)
     .single()
 
@@ -35,7 +35,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: '매장을 찾을 수 없습니다.' })
   }
 
-  const tierAmounts: Record<string, number> = { basic: 33000, standard: 55000, pro: 99000 }
+  const tierMonthly: Record<string, number> = { basic: 33000, standard: 55000, pro: 99000 }
+  const ANNUAL_DISCOUNT = 0.10
+  const calcAmount = (tier: string, cycle: string): number => {
+    const monthly = tierMonthly[tier] || 33000
+    if (cycle === 'annual') return Math.round(monthly * 12 * (1 - ANNUAL_DISCOUNT) / 100) * 100
+    return monthly
+  }
 
   switch (action) {
     case 'update': {
@@ -75,7 +81,8 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 400, message: '등록된 결제 수단이 없습니다.' })
       }
 
-      const amount = tierAmounts[store.tier] || 33000
+      const cycle = store.billing_cycle || 'monthly'
+      const amount = calcAmount(store.tier, cycle)
       const paymentId = generatePaymentId(storeId)
       const now = new Date()
 
@@ -83,12 +90,14 @@ export default defineEventHandler(async (event) => {
         const payment = await portone.payWithBillingKey({
           paymentId,
           billingKey: store.billing_key,
-          orderName: `플레이온 ${store.tier} 플랜 정기결제`,
+          orderName: `플레이온 ${store.tier} 플랜 ${cycle === 'annual' ? '연간' : '월간'} 정기결제`,
           amount,
         })
 
         if (payment.status === 'PAID') {
-          const nextDue = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate())
+          const nextDue = new Date(now)
+          if (cycle === 'annual') nextDue.setFullYear(nextDue.getFullYear() + 1)
+          else nextDue.setMonth(nextDue.getMonth() + 1)
 
           await supabase
             .from('stores')

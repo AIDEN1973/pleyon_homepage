@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
   // 매장 정보 조회
   const { data: store, error: storeError } = await supabase
     .from('stores')
-    .select('id, tier, billing_cycle, subscription_status, subscription_due_date')
+    .select('id, tier, billing_cycle, subscription_status, subscription_due_date, pending_credit')
     .eq('id', storeId)
     .single()
 
@@ -76,7 +76,7 @@ export default defineEventHandler(async (event) => {
   } else if (store.subscription_due_date) {
     const now = new Date()
     const dueDate = new Date(store.subscription_due_date)
-    const remainingDays = Math.max(0, Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+    const remainingDays = Math.max(1, Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
     diffAmount = Math.round(((toAmount - fromAmount) * remainingDays) / periodDays)
   } else {
     diffAmount = toAmount - fromAmount
@@ -101,9 +101,13 @@ export default defineEventHandler(async (event) => {
 
   // 하위 플랜 변경 (차액 환불/차감): 즉시 변경 + 다음 결제에서 차감
   if (!isUpgrade) {
+    const creditToAdd = Math.abs(diffAmount)
     await supabase
       .from('stores')
-      .update({ tier: toTier })
+      .update({
+        tier: toTier,
+        pending_credit: (store.pending_credit || 0) + creditToAdd,
+      })
       .eq('id', storeId)
 
     // 기록용 요청 저장 (완료 상태)
@@ -115,7 +119,7 @@ export default defineEventHandler(async (event) => {
         to_tier: toTier,
         diff_amount: diffAmount,
         status: 'completed',
-        memo: `하위 플랜 변경 (차액 ${Math.abs(diffAmount).toLocaleString()}원 다음 결제 차감)`,
+        memo: `하위 플랜 변경 (차액 ${creditToAdd.toLocaleString()}원 pending_credit에 적립)`,
       })
 
     return {

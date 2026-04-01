@@ -72,16 +72,19 @@ export default defineEventHandler(async (event) => {
   // 매장의 실제 tier 조회
   const { data: store } = await supabase
     .from('stores')
-    .select('tier')
+    .select('tier, billing_cycle')
     .eq('id', storeId)
     .single()
 
   const storeTier = store?.tier || 'basic'
+  const cycle = store?.billing_cycle || 'monthly'
   const now = new Date()
 
   if (type === 'Transaction.Paid' && payment.status === 'PAID') {
     // 결제 성공
-    const nextDue = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate())
+    const nextDue = new Date(now)
+    if (cycle === 'annual') nextDue.setFullYear(nextDue.getFullYear() + 1)
+    else nextDue.setMonth(nextDue.getMonth() + 1)
 
     await supabase
       .from('stores')

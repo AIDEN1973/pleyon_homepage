@@ -178,6 +178,28 @@
               <p class="text-sm text-[#0F1B2D]/40">현재 구독 중인 플랜 정보와 요금을 확인하세요.</p>
             </div>
 
+            <!-- 대기 중 플랜 변경 알림 -->
+            <div v-if="pendingPlanChange" class="bg-primary/5 rounded-2xl p-5 md:p-6 mb-6 flex items-center justify-between flex-wrap gap-4" style="border: 1px solid hsl(213,98%,55%,0.2);">
+              <div>
+                <p class="text-sm font-semibold text-[#0F1B2D]">플랜 변경 대기 중</p>
+                <p class="text-xs text-[#0F1B2D]/50 mt-0.5">{{ tierLabel(pendingPlanChange.to_tier) }} 플랜으로 변경 예정 · 차액 {{ pendingPlanChange.diff_amount.toLocaleString() }}원 입금 대기</p>
+              </div>
+              <button class="text-sm font-medium text-[#0F1B2D]/30 hover:text-destructive transition-colors" :disabled="isCancellingPlanChange" @click="cancelPendingPlanChange">
+                {{ isCancellingPlanChange ? '취소 중...' : '요청 취소' }}
+              </button>
+            </div>
+
+            <!-- 크레딧 잔액 -->
+            <div v-if="store.pendingCredit > 0" class="bg-[#e8f5e9] rounded-2xl p-5 md:p-6 mb-6 flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-[#2e7d32]/10 flex items-center justify-center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="#2e7d32" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </div>
+              <div>
+                <p class="text-sm font-semibold text-[#2e7d32]">크레딧 {{ store.pendingCredit.toLocaleString() }}원</p>
+                <p class="text-xs text-[#2e7d32]/60">다음 결제에서 자동 차감됩니다.</p>
+              </div>
+            </div>
+
             <!-- 결제 주기 전환 -->
             <div class="bg-white rounded-2xl shadow-sm p-5 md:p-6 mb-6 flex items-center justify-between flex-wrap gap-4">
               <div>
@@ -190,7 +212,7 @@
                     'px-4 py-1.5 rounded-full text-sm font-medium transition-all',
                     !isAnnualBilling ? 'bg-[#0F1B2D] text-white shadow-sm' : 'text-[#0F1B2D]/40 hover:text-[#0F1B2D]/60'
                   )"
-                  :disabled="isCycleChanging"
+                  :disabled="isCycleChanging || store.subscription_status === 'past_due'"
                   @click="requestCycleChange('monthly')"
                 >월간</button>
                 <button
@@ -198,7 +220,7 @@
                     'px-4 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1.5',
                     isAnnualBilling ? 'bg-[#0F1B2D] text-white shadow-sm' : 'text-[#0F1B2D]/40 hover:text-[#0F1B2D]/60'
                   )"
-                  :disabled="isCycleChanging"
+                  :disabled="isCycleChanging || store.subscription_status === 'past_due'"
                   @click="requestCycleChange('annual')"
                 >연간 <span v-if="!isAnnualBilling" class="text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">10%↓</span></button>
               </div>
@@ -214,7 +236,7 @@
                     <p class="text-lg text-white/60 mt-1">{{ tierAmount(store.tier) }} <span class="text-sm text-white/30">/ {{ isAnnualBilling ? '년' : '월' }}</span></p>
                   </div>
                   <div class="flex gap-2">
-                    <button class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-white text-[#0F1B2D] hover:bg-white/90 transition-colors shadow-sm" @click="showPlanChange = true">플랜 변경</button>
+                    <button class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-white text-[#0F1B2D] hover:bg-white/90 transition-colors shadow-sm" :disabled="!!pendingPlanChange" @click="showPlanChange = true">{{ pendingPlanChange ? '변경 대기 중' : '플랜 변경' }}</button>
                     <button v-if="store.hasBillingKey" class="px-5 py-2.5 rounded-xl text-sm font-medium text-white/40 hover:text-white/70 hover:bg-white/10 transition-colors" @click="handleCancelSubscription">해지</button>
                   </div>
                 </div>
@@ -562,6 +584,8 @@ const isChangingPassword = ref(false)
 const showWithdraw = ref(false)
 const isWithdrawing = ref(false)
 const withdrawError = ref('')
+const pendingPlanChange = ref<{ id: string; to_tier: string; diff_amount: number } | null>(null)
+const isCancellingPlanChange = ref(false)
 const isCycleChanging = ref(false)
 const showCycleConfirm = ref(false)
 const pendingCycle = ref<'monthly' | 'annual' | null>(null)
@@ -637,7 +661,7 @@ async function loadData() {
     if (!session?.user) { user.value = null; return }
     user.value = session.user
     const res = await $fetch('/api/payment/subscription', { headers: { Authorization: `Bearer ${session.access_token}` } })
-    store.value = res.store; payments.value = res.payments || []
+    store.value = res.store; payments.value = res.payments || []; pendingPlanChange.value = res.pendingPlanChange || null
   } catch (err: any) { loadError.value = err?.data?.message || err?.message || '데이터를 불러오지 못했습니다.' }
   finally { isLoading.value = false }
 }
@@ -668,6 +692,25 @@ async function handleResetPassword() {
   if (isResetting.value) return; isResetting.value = true; resetResult.value = ''; resetError.value = false
   try { const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.value, { redirectTo: `${window.location.origin}/my` }); if (error) throw error; resetResult.value = '재설정 링크가 이메일로 발송되었습니다.' }
   catch { resetError.value = true; resetResult.value = '발송에 실패했습니다.' } finally { isResetting.value = false }
+}
+
+async function cancelPendingPlanChange() {
+  if (isCancellingPlanChange.value) return
+  isCancellingPlanChange.value = true
+  try {
+    const session = await getSession()
+    if (!session?.access_token) throw new Error('세션 만료')
+    await $fetch('/api/payment/plan-change-cancel', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      body: { storeId: store.value.id },
+    })
+    pendingPlanChange.value = null
+  } catch (err: any) {
+    alert(err.data?.message || err.message || '취소에 실패했습니다.')
+  } finally {
+    isCancellingPlanChange.value = false
+  }
 }
 
 function requestCycleChange(cycle: 'monthly' | 'annual') {

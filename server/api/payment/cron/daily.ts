@@ -26,16 +26,8 @@ export default defineEventHandler(async (event) => {
     return monthly
   }
 
-  // 결제 주기에 따른 기간 계산
-  const addPeriod = (dateStr: string, cycle: string): string => {
-    const d = new Date(dateStr)
-    if (cycle === 'annual') d.setFullYear(d.getFullYear() + 1)
-    else d.setMonth(d.getMonth() + 1)
-    d.setDate(d.getDate() - 1)
-    return d.toISOString().split('T')[0]
-  }
-
-  const nextDueDate = (dateStr: string, cycle: string): string => {
+  // 결제 주기에 따른 기간/결제일 계산 (동일 로직 통합)
+  const calcNextDate = (dateStr: string, cycle: string = 'monthly'): string => {
     const d = new Date(dateStr)
     if (cycle === 'annual') d.setFullYear(d.getFullYear() + 1)
     else d.setMonth(d.getMonth() + 1)
@@ -54,8 +46,7 @@ export default defineEventHandler(async (event) => {
     const cycle = store.billing_cycle || 'monthly'
     const amount = calcAmount(store.tier, cycle)
     const periodStart = todayStr
-    const periodEnd = addPeriod(todayStr, cycle)
-    const dueDateNext = nextDueDate(todayStr, cycle)
+    const dueDateNext = calcNextDate(todayStr, cycle)
 
     // 빌링키 없는 매장 (무통장입금) → 자동결제 없이 past_due 전환
     if (!store.billing_key) {
@@ -70,7 +61,7 @@ export default defineEventHandler(async (event) => {
         tier: store.tier,
         amount,
         period_start: periodStart,
-        period_end: periodEnd,
+        period_end: dueDateNext,
         payment_status: 'unpaid',
         payment_method: 'BANK_TRANSFER',
       }, { onConflict: 'store_id,period_start', ignoreDuplicates: true })
@@ -102,7 +93,7 @@ export default defineEventHandler(async (event) => {
           tier: store.tier,
           amount,
           period_start: periodStart,
-          period_end: periodEnd,
+          period_end: dueDateNext,
           payment_status: 'paid',
           payment_date: todayStr,
           payment_method: 'BILLING_KEY',
@@ -132,36 +123,59 @@ export default defineEventHandler(async (event) => {
   // ─── 2. 구독 갱신 ────────────────────────────────────
   const { data: renewStores } = await supabase
     .from('stores')
-    .select('id, name, tier, billing_cycle, billing_key, subscription_due_date')
+    .select('id, name, tier, billing_cycle, billing_key, subscription_due_date, pending_credit')
     .eq('subscription_status', 'active')
     .eq('is_franchise', false)
     .lte('subscription_due_date', todayStr)
 
   for (const store of renewStores || []) {
     const cycle = store.billing_cycle || 'monthly'
-    const amount = calcAmount(store.tier, cycle)
+    const baseAmount = calcAmount(store.tier, cycle)
+    const credit = store.pending_credit || 0
+    const chargeAmount = Math.max(0, baseAmount - credit)
+    const usedCredit = Math.min(credit, baseAmount)
+    const remainingCredit = credit - usedCredit
     const periodStart = todayStr
-    const periodEnd = addPeriod(todayStr, cycle)
-    const dueDateNext = nextDueDate(todayStr, cycle)
+    const dueDateNext = calcNextDate(todayStr, cycle)
 
     // 빌링키 없는 매장 (무통장입금) → past_due 전환
     if (!store.billing_key) {
       await supabase.from('stores').update({
-        subscription_status: 'past_due',
-        subscription_due_date: periodEnd,  // 구독 종료일 기준 (가드에서 연체일 계산용)
+        subscription_status: chargeAmount === 0 ? 'active' : 'past_due',
+        subscription_due_date: dueDateNext,
+        pending_credit: remainingCredit,
       }).eq('id', store.id)
 
       await supabase.from('saas_subscription_payments').upsert({
         store_id: store.id,
         tier: store.tier,
-        amount,
+        amount: chargeAmount,
         period_start: periodStart,
-        period_end: periodEnd,
-        payment_status: 'unpaid',
-        payment_method: 'BANK_TRANSFER',
+        period_end: dueDateNext,
+        payment_status: chargeAmount === 0 ? 'paid' : 'unpaid',
+        payment_method: chargeAmount === 0 ? 'CREDIT' : 'BANK_TRANSFER',
+        payment_date: chargeAmount === 0 ? todayStr : null,
       }, { onConflict: 'store_id,period_start', ignoreDuplicates: true })
 
       results.push({ storeId: store.id, task: 'renew', status: 'past_due', detail: '무통장입금 대기' })
+      continue
+    }
+
+    // 크레딧이 전액 커버하면 결제 스킵
+    if (chargeAmount === 0) {
+      await supabase.from('stores').update({
+        subscription_status: 'active',
+        subscription_due_date: dueDateNext,
+        pending_credit: remainingCredit,
+      }).eq('id', store.id)
+
+      await supabase.from('saas_subscription_payments').upsert({
+        store_id: store.id, tier: store.tier, amount: 0,
+        period_start: periodStart, period_end: dueDateNext,
+        payment_status: 'paid', payment_date: todayStr, payment_method: 'CREDIT',
+      }, { onConflict: 'store_id,period_start', ignoreDuplicates: true })
+
+      results.push({ storeId: store.id, task: 'renew', status: 'credit_covered' })
       continue
     }
 
@@ -173,21 +187,22 @@ export default defineEventHandler(async (event) => {
         paymentId,
         billingKey: store.billing_key,
         orderName: `플레이온 ${store.tier} 플랜 ${cycle === 'annual' ? '연간' : '월간'} 정기결제`,
-        amount,
+        amount: chargeAmount,
       })
 
       if (payment.status === 'PAID') {
         await supabase.from('stores').update({
           subscription_status: 'active',
           subscription_due_date: dueDateNext,
+          pending_credit: remainingCredit,
         }).eq('id', store.id)
 
         await supabase.from('saas_subscription_payments').upsert({
           store_id: store.id,
           tier: store.tier,
-          amount,
+          amount: chargeAmount,
           period_start: periodStart,
-          period_end: periodEnd,
+          period_end: dueDateNext,
           payment_status: 'paid',
           payment_date: todayStr,
           payment_method: 'BILLING_KEY',
@@ -235,7 +250,7 @@ export default defineEventHandler(async (event) => {
     // 미납 레코드 찾기 (가장 최근 period_start)
     const { data: unpaidRecord } = await supabase
       .from('saas_subscription_payments')
-      .select('period_start, period_end')
+      .select('period_start, period_end, amount')
       .eq('store_id', store.id)
       .eq('payment_status', 'unpaid')
       .order('period_start', { ascending: false })
@@ -243,8 +258,8 @@ export default defineEventHandler(async (event) => {
       .single()
 
     const paymentId = generatePaymentId(store.id)
-    const cycle = store.billing_cycle || 'monthly'
-    const amount = calcAmount(store.tier, cycle)
+    // Bug 7: 원래 청구 금액 사용 (변경된 billing_cycle로 재계산하지 않음)
+    const amount = unpaidRecord?.amount || calcAmount(store.tier, store.billing_cycle || 'monthly')
 
     try {
       const payment = await portone.payWithBillingKey({
@@ -257,7 +272,7 @@ export default defineEventHandler(async (event) => {
       if (payment.status === 'PAID') {
         await supabase.from('stores').update({
           subscription_status: 'active',
-          subscription_due_date: nextDueDate(todayStr, cycle),
+          subscription_due_date: calcNextDate(todayStr, store.billing_cycle || 'monthly'),
         }).eq('id', store.id)
 
         // 미납 레코드를 paid로 업데이트
