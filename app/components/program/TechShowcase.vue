@@ -23,7 +23,7 @@
           {{ item.label }}
         </div>
         <div
-          class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white font-display text-3xl md:text-4xl font-semibold text-center leading-title z-[2] max-w-[90%] md:max-w-none whitespace-normal md:whitespace-nowrap"
+          class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white font-display text-2xl md:text-4xl font-semibold text-center leading-title z-[2] max-w-full px-4 md:max-w-none md:px-0 whitespace-nowrap"
         >
           {{ item.text }}<br />
           <span class="text-primary">{{ item.accent }}</span>

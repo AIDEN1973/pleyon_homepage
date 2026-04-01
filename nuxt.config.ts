@@ -50,6 +50,14 @@ export default defineNuxtConfig({
       htmlAttrs: { lang: 'ko' },
       charset: 'utf-8',
       viewport: 'width=device-width, initial-scale=1',
+      meta: [
+        { name: 'author', content: '플레이온' },
+        { name: 'robots', content: 'index, follow' },
+        { property: 'og:site_name', content: '플레이온' },
+        { property: 'og:locale', content: 'ko_KR' },
+        { name: 'naver-site-verification', content: '' },
+        { name: 'google-site-verification', content: '' },
+      ],
       link: [
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
         { rel: 'preconnect', href: 'https://cdn.jsdelivr.net', crossorigin: '' },

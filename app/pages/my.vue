@@ -673,7 +673,7 @@ async function confirmCycleChange() {
       headers: { Authorization: `Bearer ${session.access_token}` },
       body: { storeId: store.value.id, billingCycle: pendingCycle.value },
     })
-    await loadData()
+    store.value.billingCycle = pendingCycle.value
   } catch (err: any) {
     alert(err.data?.message || err.message || '변경에 실패했습니다.')
   } finally {
@@ -686,7 +686,7 @@ async function handleLogout() { await supabase.auth.signOut(); user.value = null
 
 async function handleCancelSubscription() {
   if (!store.value || !confirm(store.value.subscription_status === 'trialing' ? '무료이용을 취소하시겠습니까?' : '구독을 해지하시겠습니까?')) return
-  try { const { data: { session } } = await supabase.auth.getSession(); await $fetch('/api/payment/billing', { method: 'POST', headers: { Authorization: `Bearer ${session!.access_token}` }, body: { action: 'delete', storeId: store.value.id } }); await loadData() }
+  try { const { data: { session } } = await supabase.auth.getSession(); await $fetch('/api/payment/billing', { method: 'POST', headers: { Authorization: `Bearer ${session!.access_token}` }, body: { action: 'delete', storeId: store.value.id } }); store.value.subscription_status = 'cancelled' }
   catch (err: any) { alert(err.data?.message || err.message || '실패') }
 }
 
@@ -697,7 +697,7 @@ async function handlePlanChange() {
   try {
     const { data: { session } } = await supabase.auth.getSession()
     const res = await $fetch<{ success: boolean; message: string; diffAmount: number; immediate: boolean }>('/api/payment/plan-change', { method: 'POST', headers: { Authorization: `Bearer ${session!.access_token}` }, body: { storeId: store.value.id, toTier: selectedNewTier.value } })
-    planChangeResult.value = res.message; planChangeDiffAmount.value = res.diffAmount > 0 ? res.diffAmount : 0; if (res.immediate) await loadData()
+    planChangeResult.value = res.message; planChangeDiffAmount.value = res.diffAmount > 0 ? res.diffAmount : 0; if (res.immediate) store.value.tier = selectedNewTier.value
   } catch (err: any) { planChangeError.value = err.data?.message || err.message || '실패' } finally { isChangingPlan.value = false }
 }
 

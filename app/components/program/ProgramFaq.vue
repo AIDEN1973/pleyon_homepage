@@ -31,7 +31,7 @@
               <AccordionTrigger class="py-5 text-sm md:text-base font-medium text-white hover:text-white/70 hover:no-underline">
                 {{ item.q }}
               </AccordionTrigger>
-              <AccordionContent class="pb-5 text-sm leading-relaxed text-white/50">
+              <AccordionContent class="pb-5 text-sm leading-relaxed text-white">
                 {{ item.a }}
               </AccordionContent>
             </AccordionItem>

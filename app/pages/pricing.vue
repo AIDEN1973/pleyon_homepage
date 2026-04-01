@@ -275,9 +275,14 @@ import { Switch } from '~/components/ui/switch'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '~/components/ui/table'
 import { Separator } from '~/components/ui/separator'
 
-useHead({ title: '요금제 - 플레이온' })
+useHead({
+  title: '요금제 - 플레이온 | 레고카페 블럭방 운영 프로그램',
+  meta: [
+    { name: 'keywords', content: '레고카페 프로그램 가격, 블럭방 관리 프로그램, 레고방 운영 프로그램, 레고대여점 프로그램, 블럭카페 프로그램, 브릭카페 프로그램' },
+  ],
+})
 useSeoMeta({
-  description: '합리적인 가격으로 레고카페 운영을 혁신하세요. 베이직 33,000원 · 스탠다드 55,000원 · 프로 99,000원. 전체 기능 비교표로 우리 매장에 맞는 플랜을 확인하세요.',
+  description: '레고카페, 블럭방, 레고방, 레고대여점 운영 프로그램 요금제. 베이직 33,000원 · 스탠다드 55,000원 · 프로 99,000원. 14일 무료이용으로 시작하세요.',
 })
 
 const openFaq = ref<number | null>(null)

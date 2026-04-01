@@ -1,5 +1,5 @@
 <template>
-  <section :class="cn('relative -mt-[var(--header-height)] pt-[calc(var(--header-height)+4rem)] pb-16 md:pt-[calc(var(--header-height)+7rem)] md:pb-32 text-center overflow-hidden transition-colors duration-700', slides[currentSlide].bg)">
+  <section :class="cn('relative -mt-[var(--header-height)] pt-[calc(var(--header-height)+2.5rem)] pb-10 md:pt-[calc(var(--header-height)+7rem)] md:pb-32 text-center overflow-hidden transition-colors duration-700', slides[currentSlide].bg)">
     <!-- 도트 그리드 (헤더 아래부터) -->
     <div class="absolute inset-0 top-[var(--header-height)] pointer-events-none" style="background-image: radial-gradient(circle, rgba(255,255,255,0.12) 1.5px, transparent 1.5px); background-size: 28px 28px;" />
     <!-- 큰 원형 아웃라인 -->
@@ -66,7 +66,7 @@
           <h1 class="font-display text-4xl md:text-5xl lg:text-6xl font-extrabold leading-title text-white tracking-tight text-center">
             {{ slide.title }}
           </h1>
-          <p class="text-base md:text-lg text-white/80 leading-relaxed max-w-2xl text-center" v-html="slide.desc" />
+          <p class="text-[15px] md:text-lg text-white/80 leading-relaxed max-w-2xl text-center" v-html="slide.desc" />
         </div>
       </div>
       <div class="flex flex-col sm:flex-row gap-3 mt-2">
@@ -117,17 +117,17 @@ const storeCount = computed(() => metrics.value?.stores || 28)
 const slides = [
   {
     title: '레고카페만을 위해',
-    desc: '오직 레고카페만을 위해 만들었습니다.<br>몸에 맞는 옷을 입어야지, 옷에 몸을 맞출 수는 없으니까요.<br><strong class="text-white font-bold">최신 기술이 적용된 플레이온으로 시작하세요.</strong>',
+    desc: '오직 레고카페만을 위해 만들었습니다.<br><span class="hidden md:inline">몸에 맞는 옷을 입어야지, 옷에 몸을 맞출 수는 없으니까요.</span><span class="md:hidden">11년간의 운영 노하우를 모두 담았습니다.</span><br><strong class="text-white font-bold">최신 기술이 적용된 플레이온으로 시작하세요.</strong>',
     bg: 'bg-[#1A7CFD]',
   },
   {
     title: '플레이가 직접 만든',
-    desc: '국내 최초 레고대여점 브랜드 플레이가 직접 만들었어요.<br>우리는 IT 회사가 아니지만, 상상했던 모든 기능을 하나하나 직접 만들었습니다.<br><strong class="text-white font-bold">제대로된 프로그램은 꼭 필요하니까요.</strong>',
+    desc: '<span class="hidden md:inline">국내 최초 레고대여점 브랜드 플레이가 직접 만들었어요.<br>우리는 IT 회사가 아니지만, </span><span class="md:hidden">국내 최초 레고대여점 플레이가 만들었어요.<br></span>상상했던 모든 기능을 하나하나 직접 만들었습니다.<br><strong class="text-white font-bold">제대로된 프로그램은 꼭 필요하니까요.</strong>',
     bg: 'bg-[#DC3545]',
   },
   {
     title: '1인 운영에 딱 맞게',
-    desc: '1인 운영에 딱 맞게, 모든 업무가 자동 처리됩니다.<br>마치 알아서 판단하고 운전하는 자율주행 자동차처럼 말이죠.<br><strong class="text-white font-bold">점주님의 피같은 돈과 시간, 아껴 드릴게요.</strong>',
+    desc: '1인 운영에 딱 맞게, 모든 업무가 자동 처리됩니다.<br><span class="hidden md:inline">마치 알아서 판단하고 운전하는 자율주행 자동차처럼 말이죠.</span><span class="md:hidden">마치 알아서 운전하는 자율주행 자동차처럼 말이죠.</span><br><strong class="text-white font-bold">점주님의 피같은 돈과 시간, 아껴 드릴게요.</strong>',
     bg: 'bg-[#6C5CE7]',
   },
 ]
